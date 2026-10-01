@@ -81,6 +81,13 @@ if(BUILD_TESTING)
   add_executable(touch_test tests/touch_test.cpp)
   target_link_libraries(touch_test PRIVATE cmc_core)
   add_test(NAME touch COMMAND touch_test)
+
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_FOUND)
+    add_test(NAME smoke
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.py
+              $<TARGET_FILE:claude-monitor-companion>)
+  endif()
 endif()
 
 # ------------------------------------------------------------------ install --
