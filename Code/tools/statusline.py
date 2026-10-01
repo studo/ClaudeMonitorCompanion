@@ -3,7 +3,10 @@
 
 Usage, as the `statusLine.command` in ~/.claude/settings.json:
 
-    python3 /path/to/tools/statusline.py <board-host> <token>
+    python3 /path/to/tools/statusline.py <board-host>[,<host>...] <token>
+
+Several hosts, comma-separated, feed several mascots: a board and the desktop
+companion, say. tools/gen_hooks.py writes this line for you.
 
 Why this exists: the board wants to show how much of the five-hour limit is
 gone and when it resets, and *hooks cannot tell it*. No hook payload carries
@@ -32,8 +35,8 @@ import subprocess
 import sys
 
 
-def forward(host, token, five, seven):
-    """Spawn a detached POST. Never blocks, never raises into the caller."""
+def forward(hosts, token, five, seven):
+    """Spawn one detached POST per host. Never blocks, never raises into the caller."""
     params = []
     pct = five.get("used_percentage")
     if pct is not None:
@@ -45,18 +48,20 @@ def forward(host, token, five, seven):
         params.append(f"wreset={int(seven.get('resets_at') or 0)}")
     if not params:
         return
-    url = f"http://{host}/limits?" + "&".join(params)
-    try:
-        subprocess.Popen(
-            ["curl", "-s", "-m", "2", "-X", "POST",
-             "-H", f"Authorization: Bearer {token}", url],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-    except Exception:
-        pass
+    query = "&".join(params)
+    for host in hosts:
+        try:
+            subprocess.Popen(
+                ["curl", "-s", "-m", "2", "-X", "POST",
+                 "-H", f"Authorization: Bearer {token}",
+                 f"http://{host}/limits?{query}"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            pass
 
 
 def bar(pct, width=10):
@@ -92,8 +97,9 @@ def main():
     limits = data.get("rate_limits") or {}
     five = limits.get("five_hour") or {}
     seven = limits.get("seven_day") or {}
-    if host:
-        forward(host, token, five, seven)
+    hosts = [h.strip() for h in (host or "").split(",") if h.strip()]
+    if hosts:
+        forward(hosts, token, five, seven)
 
     model = (data.get("model") or {}).get("display_name", "claude")
     ctx = (data.get("context_window") or {}).get("used_percentage")

@@ -3,7 +3,10 @@
 
     Set as statusLine.command in %USERPROFILE%\.claude\settings.json:
 
-        powershell -NoProfile -ExecutionPolicy Bypass -File C:/path/to/statusline.ps1 <board-host> <token>
+        powershell -NoProfile -ExecutionPolicy Bypass -File C:/path/to/statusline.ps1 <board-host>[,<host>...] <token>
+
+    Several hosts, comma-separated, feed several mascots. gen_hooks.py writes
+    this line for you.
 
     Note the forward slashes. Claude Code runs the status line through Git Bash
     when Git Bash is installed, and Git Bash eats unquoted backslashes in a
@@ -75,14 +78,18 @@ if ($BoardHost) {
         }
 
         if ($params.Count -gt 0) {
-            $url = "http://$BoardHost/limits?" + ($params -join "&")
-            # Start-Process returns immediately; the request outlives this
-            # script, which is the whole point.
-            Start-Process -FilePath "curl.exe" -WindowStyle Hidden -ArgumentList @(
-                "-s", "-m", "2", "-X", "POST",
-                "-H", "Authorization: Bearer $Token",
-                $url
-            ) | Out-Null
+            $query = $params -join "&"
+            foreach ($h in ($BoardHost -split ",")) {
+                $h = $h.Trim()
+                if (-not $h) { continue }
+                # Start-Process returns immediately; the request outlives this
+                # script, which is the whole point.
+                Start-Process -FilePath "curl.exe" -WindowStyle Hidden -ArgumentList @(
+                    "-s", "-m", "2", "-X", "POST",
+                    "-H", "Authorization: Bearer $Token",
+                    "http://$h/limits?$query"
+                ) | Out-Null
+            }
         }
     } catch {
         # Never let a forwarding problem reach the status bar.

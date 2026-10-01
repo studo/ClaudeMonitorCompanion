@@ -2,9 +2,18 @@
 """Print the Claude Code hook config for the mascot.
 
 Usage:
-    python3 tools/gen_hooks.py <host> <token> [--windows | --unix]
+    python3 tools/gen_hooks.py <host>[,<host>...] <token> [--windows | --unix]
 
-    python3 tools/gen_hooks.py 192.168.1.42 my-token
+    python3 tools/gen_hooks.py 192.168.1.42 my-token           # the board
+    python3 tools/gen_hooks.py desktop my-token                # the Linux companion
+    python3 tools/gen_hooks.py 192.168.1.42,desktop my-token   # both at once
+
+Each host is a board's IP or a host:port. "desktop" is shorthand for the
+desktop companion's default address, 127.0.0.1:8765 (see Code/desktop). With
+several hosts, every hook fires one curl per host, so a board that is switched
+off never delays the others: each curl is its own async process with its own
+2 s limit. One curl given two URLs would try them in turn, and the second
+would wait out the first's timeout. The token must be the same on all of them.
 
 The platform is detected from the machine you run this on; the flags override
 it, which is what you want when generating a config for someone else.
@@ -38,6 +47,9 @@ import json
 import os
 import shlex
 import sys
+
+# Where the desktop companion listens unless told otherwise.
+DESKTOP = "127.0.0.1:8765"
 
 # Claude Code hook -> matcher -> the raw fact the board is told about.
 # WORKING is inferred board-side as the span between prompt_submitted and
@@ -138,7 +150,12 @@ def main() -> int:
         print(__doc__.strip(), file=sys.stderr)
         return 2
 
-    host, token = args
+    hosts_arg, token = args
+    hosts = [DESKTOP if h == "desktop" else h
+             for h in (h.strip() for h in hosts_arg.split(",")) if h]
+    if not hosts:
+        print("no host given", file=sys.stderr)
+        return 2
     windows = "--windows" in flags or (
         "--unix" not in flags and sys.platform.startswith("win")
     )
@@ -146,15 +163,16 @@ def main() -> int:
     hooks: dict = {}
     for hook_name, matcher, event in MAPPING:
         hooks.setdefault(hook_name, []).append(
-            {"matcher": matcher, "hooks": [entry(host, token, event)]}
+            {"matcher": matcher, "hooks": [entry(h, token, event) for h in hosts]}
         )
 
     # The status line is the only place Claude Code exposes rate-limit figures,
     # so the usage gauge depends on it. refreshInterval keeps the countdown
     # moving while you are idle, when no assistant message would trigger it.
+    # Both status line scripts split the comma-separated list themselves.
     statusline = {
         "type": "command",
-        "command": statusline_command(host, token, windows),
+        "command": statusline_command(",".join(hosts), token, windows),
         "refreshInterval": 60,
     }
 
