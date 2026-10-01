@@ -6,8 +6,12 @@
 # looks in ../src and ../include.
 #
 #   sudo apt install build-essential cmake pkg-config libsdl3-dev
-#   cmake -S Code/desktop -B Code/desktop/build -DCMAKE_BUILD_TYPE=Release
+#   cmake -S Code/desktop -B Code/desktop/build -DCMAKE_INSTALL_PREFIX=$HOME/.local
 #   cmake --build Code/desktop/build -j
+#   cmake --install Code/desktop/build
+#
+# The prefix is given at configure time, not to `cmake --install --prefix`,
+# because the systemd unit and the .desktop file carry the installed path.
 
 cmake_minimum_required(VERSION 3.20)
 project(claude-monitor-companion VERSION 1.1 LANGUAGES C CXX)
@@ -20,6 +24,7 @@ endif()
 
 find_package(SDL3 3.2 REQUIRED CONFIG COMPONENTS SDL3)
 find_package(Threads REQUIRED)
+include(GNUInstallDirs)
 
 set(FIRMWARE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
@@ -77,3 +82,22 @@ if(BUILD_TESTING)
   target_link_libraries(touch_test PRIVATE cmc_core)
   add_test(NAME touch COMMAND touch_test)
 endif()
+
+# ------------------------------------------------------------------ install --
+
+set(CMC_BINARY ${CMAKE_INSTALL_FULL_BINDIR}/claude-monitor-companion)
+configure_file(packaging/claude-monitor-companion.service.in
+  ${CMAKE_CURRENT_BINARY_DIR}/claude-monitor-companion.service @ONLY)
+configure_file(packaging/claude-monitor-companion.desktop.in
+  ${CMAKE_CURRENT_BINARY_DIR}/claude-monitor-companion.desktop @ONLY)
+
+install(TARGETS claude-monitor-companion RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# share/systemd/user is on systemd's user unit path for both ~/.local and /usr/local.
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/claude-monitor-companion.service
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/claude-monitor-companion.desktop
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES packaging/claude-monitor-companion.svg
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+install(FILES packaging/claude-monitor-companion.kwinrule
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/claude-monitor-companion)

@@ -1,0 +1,16 @@
+# KWin window rule for the Claude Monitor Companion.
+#
+# Wayland does not let a program put itself above other windows or choose
+# where it opens; the compositor decides. This rule asks KWin to do both:
+# start the companion above other windows and remember where you put it.
+#
+# Import it in System Settings > Window Management > Window Rules > Import...
+# and adjust it there.
+
+[Claude Monitor Companion]
+Description=Claude Monitor Companion: keep above, remember position
+wmclass=claude-monitor-companion
+wmclassmatch=1
+above=true
+aboverule=3
+positionrule=4

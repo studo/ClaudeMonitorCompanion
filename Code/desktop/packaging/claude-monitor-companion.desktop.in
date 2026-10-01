@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Monitor Companion
+GenericName=Claude Code mascot
+Comment=Shows what Claude Code is doing, like the ESP32 desk mascot
+# Launching from the menu starts the user service, so there is one way the
+# companion runs, with one set of options, whichever way it was started.
+Exec=systemctl --user start claude-monitor-companion.service
+Icon=claude-monitor-companion
+Terminal=false
+StartupNotify=false
+StartupWMClass=claude-monitor-companion
+SingleMainWindow=true
+Categories=Development;
+Keywords=claude;mascot;notifier;

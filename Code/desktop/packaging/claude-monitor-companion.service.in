@@ -1,0 +1,23 @@
+# Runs the companion for as long as you are logged in to a graphical session,
+# and restarts it if it crashes. Enable it once:
+#
+#   systemctl --user enable --now claude-monitor-companion.service
+#
+# Logs: journalctl --user -u claude-monitor-companion -f
+
+[Unit]
+Description=Claude Monitor Companion (desktop mascot for Claude Code)
+Documentation=https://github.com/MilosRasic98/ClaudeMonitorCompanion
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+ExecStart=@CMC_BINARY@
+# Closing the window is a deliberate exit (status 0) and is respected. A crash
+# is not, and brings the window back.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
