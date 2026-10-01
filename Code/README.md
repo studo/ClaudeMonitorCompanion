@@ -109,6 +109,233 @@ only possible because the event rides in the URL path with no request body — w
 is only possible because the board owns the mood state machine and the host reports nothing
 but raw facts.
 
+## Linux desktop companion
+
+No board, or a second screen for the same events? [`desktop/`](desktop) builds this firmware
+for Linux and runs it in a window: the same mood engine, faces, screens and settings page,
+compiled from the same sources, with the panel shown pixel for pixel. It listens for the same
+HTTP requests as the board, so the same hooks drive it, and it can run alongside a board.
+
+Built and tested on Kubuntu 26.04 (Plasma 6, Wayland). It should work on any Linux desktop
+with SDL 3.2 or newer and systemd; the taskbar highlight needs a dock that implements the
+LauncherEntry interface, as Plasma's task manager does.
+
+**Mouse as finger.** Everything the touchscreen does, the mouse does:
+
+| Do this | Same as on the board | Effect |
+|---|---|---|
+| Click the face | tap | acknowledge an alert, poke it (five quick pokes make it cross) |
+| Drag sideways | swipe sideways | next or previous face style |
+| Drag up or down | swipe up or down | face, five-hour gauge, weekly gauge, stats |
+| Space or Enter | tap | — |
+| Arrow keys, mouse wheel | swipes | — |
+| Any other key | a keystroke on the USB serial console | `p` `n` `f` `1`–`9` `d` `[` `]` `v` … see [Serial commands](#serial-commands) |
+
+**Getting your attention, without taking focus.** When Claude needs input or hits the usage
+limit, the field goes red and the bell and buzzer sound, as on the board. Its taskbar entry is
+also highlighted, and a desktop notification appears. Both clear by themselves once the alert
+is dealt with, wherever you answered it. The window never raises itself or takes the keyboard.
+
+**Sound** comes from your speakers, synthesised from the same settings as the board's buzzer
+and bell. One default differs from the board: failures are silent, because the buzz for every
+failed tool call is a lot to hear from laptop speakers. Change it under *Sound on errors* on the
+settings page.
+
+### 1. Install the build dependencies
+
+```bash
+sudo apt install build-essential cmake pkg-config libsdl3-dev libsystemd-dev
+```
+
+`curl` and `python3`, which the hooks and the tools use, are already part of Kubuntu.
+
+### 2. Build and install
+
+```bash
+cd Code/desktop
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake --build build -j
+ctest --test-dir build          # optional: the touch and end-to-end tests, headless
+cmake --install build
+```
+
+This installs into your home directory only:
+
+| | |
+|---|---|
+| `~/.local/bin/claude-monitor-companion` | the program |
+| `~/.local/share/systemd/user/claude-monitor-companion.service` | starts it with your session |
+| `~/.local/share/applications/claude-monitor-companion.desktop` | menu entry, taskbar icon, notification settings |
+| `~/.local/share/icons/hicolor/scalable/apps/claude-monitor-companion.svg` | icon |
+| `~/.local/share/claude-monitor-companion/claude-monitor-companion.kwinrule` | optional KWin rule (below) |
+
+Give the prefix when configuring, as above, not to `cmake --install --prefix`: the service and
+the menu entry contain the installed path.
+
+### 3. Start it now and at every login
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now claude-monitor-companion.service
+```
+
+The service belongs to your graphical session: it starts when Plasma does, stops when you log
+out, and comes back by itself if it ever crashes. Closing the window is taken as meaning it, and
+it stays closed until the next login or until you start it from the application menu (the menu
+entry starts the service, so there is only ever one copy).
+
+To run it in a terminal instead, for its log or to try options, stop the service first:
+
+```bash
+systemctl --user stop claude-monitor-companion
+~/.local/bin/claude-monitor-companion --help
+```
+
+| Option | |
+|---|---|
+| `--port N` | listen on another port (default 8765) |
+| `--scale N` | window size as a multiple of the 240×280 panel (default 2). The window is also freely resizable |
+| `--mute` | no sound at all |
+| `--notify LIST` | which events notify: `needs_input`, `limit`, `error`, `done`, or `none` (default `needs_input,limit`) |
+| `--no-attention` | do not highlight the taskbar entry |
+| `--listen ADDR` | listen on another address than 127.0.0.1. The settings page is then open to that network, as the board's is |
+
+To give the service options, override its command:
+
+```bash
+systemctl --user edit claude-monitor-companion
+```
+
+```ini
+[Service]
+ExecStart=
+ExecStart=%h/.local/bin/claude-monitor-companion --scale 3
+```
+
+### 4. Set the hook token
+
+Open <http://127.0.0.1:8765/>, the same settings page the board serves, and set *Hook token*
+under Wi-Fi. If you also have a board, use the same token on both. From a terminal instead:
+
+```bash
+curl -d token=your-token http://127.0.0.1:8765/api/config
+```
+
+### 5. Register the Claude Code hooks
+
+The generator takes a comma-separated list of targets, and `desktop` is shorthand for
+`127.0.0.1:8765`:
+
+```bash
+python3 Code/tools/gen_hooks.py desktop your-token                # the desktop only
+python3 Code/tools/gen_hooks.py 192.168.1.42,desktop your-token   # a board and the desktop
+```
+
+Merge the output into `~/.claude/settings.json` exactly as in
+[step 4 of the board setup](#4-wire-up-the-hooks). With several targets every hook runs one
+`curl` per target, each async with its own 2 s limit, so a board that is switched off never
+delays the desktop. Choosing the board, the desktop or both is only ever this command — no
+code changes. In Claude Code, `/hooks` shows what is registered.
+
+### 6. Try it without Claude Code
+
+[`tools/simulate_events.py`](tools/simulate_events.py) sends exactly what the hooks and the
+status line would, and prints the mood the mascot ends up in:
+
+```bash
+python3 Code/tools/simulate_events.py --token your-token                # a guided tour of every state
+python3 Code/tools/simulate_events.py --token your-token needs_input    # one event
+python3 Code/tools/simulate_events.py --token your-token limits:42:17   # usage figures for the gauges
+python3 Code/tools/simulate_events.py --list
+```
+
+It takes `--host` with the same target list as the generator, so it can drive a board and the
+desktop at once. `MASCOT_TOKEN` in the environment saves typing the token.
+
+### Keeping it on top
+
+A Wayland program cannot put itself above other windows or pick where it opens; the compositor
+decides. To have KWin do both, import the bundled rule: *System Settings → Window Management →
+Window Rules → Import…*, and choose
+`~/.local/share/claude-monitor-companion/claude-monitor-companion.kwinrule`. It keeps the window
+above others and remembers its position; adjust it there.
+
+### When it is not running
+
+A hook sent to a companion that is not running fails at once with "connection refused", and
+since every hook is async, Claude Code never notices. The event is simply lost, exactly as with
+a board that is switched off; the face picks up from the next one. Settings, drawn faces and
+the last usage figures are kept on disk, and the status line resends usage within a minute.
+
+### Where things live
+
+| | |
+|---|---|
+| `~/.config/claude-monitor-companion/` | settings, drawn faces and usage figures, one small text file per store |
+| `journalctl --user -u claude-monitor-companion` | the log — the same lines the board prints over USB |
+| `systemctl --user kill -s USR1 claude-monitor-companion` | saves the panel as `~/.config/claude-monitor-companion/screenshot.png` |
+
+### How it is built
+
+The firmware is not ported; it is compiled as it is. `desktop/shim/` supplies the small part of
+Arduino-ESP32 and FreeRTOS the firmware calls (`Serial`, `String`, `Preferences`, `WebServer`,
+tasks and queues), and `desktop/src/` implements the three hardware headers —
+[`display.h`](include/display.h), [`touch.h`](include/touch.h) and [`bell.h`](include/bell.h)
+— for a window, a mouse and a sound card. Nothing in `src/` or `include/` has a desktop
+`#ifdef`, and PlatformIO never sees `desktop/`, so the ESP32 build is unaffected.
+
+Deliberate differences from the board:
+
+- It listens on 127.0.0.1:8765 rather than port 80, and refuses requests from other web sites
+  and rebound host names — a loopback port is reachable from every tab in your browser.
+- No Wi-Fi. The Wi-Fi settings have no effect beyond restarting the companion, the way they
+  reboot the board; the Wi-Fi serial commands do nothing; the stats screen shows the
+  listening address and a signal of 0 dBm.
+- The clock and timezone are the computer's; the timezone setting is ignored.
+- There is always a bell, whatever GPIO the settings name.
+- Mouse coordinates are the panel's own. The board's touch axes have not been verified against
+  its panel (see `src/board/touch.cpp`), so if a swipe moves the other way on a real board,
+  that is the board's mapping, not the desktop's.
+
+### Troubleshooting
+
+**"Port 8765 is already in use".** A copy is already running (`systemctl --user status
+claude-monitor-companion`), or something else has the port. In that case use `--port`, and
+generate the hooks with `127.0.0.1:<port>` instead of `desktop`.
+
+**No window at login.** Check `systemctl --user status claude-monitor-companion`. "cannot open
+a window" in the log means the service started without the session's display; `systemctl
+--user show-environment | grep WAYLAND` should list `WAYLAND_DISPLAY`. Plasma provides it
+normally; on other desktops, run `systemctl --user import-environment WAYLAND_DISPLAY DISPLAY`
+from the session's autostart.
+
+**Events do not arrive.** Send one by hand:
+`python3 Code/tools/simulate_events.py --token your-token needs_input`. `HTTP 401` means the
+token on the settings page and the one in the hooks differ. If the simulator works but Claude
+Code does not move the face, check `/hooks` in Claude Code, and remember that `statusLine`
+changes only apply to new sessions.
+
+**No sound.** Look for "no audio" or "cannot open audio device" in the log, check that the
+service is not running with `--mute`, and check the three *Sound* choices on the settings page.
+The audio device is opened only while a sound plays, so the companion does not show up in the
+volume applet in between.
+
+**No notification or taskbar highlight.** Both are skipped while the companion's window has
+focus — you are already looking at it. Otherwise check Do Not Disturb, and *System Settings →
+Notifications → Applications → Claude Monitor Companion*. The highlight needs the installed
+`.desktop` file, so a build run straight from `build/` notifies but does not highlight.
+
+**The gauges say `EST NO HOST`.** The status line is not reaching the companion; see
+[Where the gauge's numbers come from](#where-the-gauges-numbers-come-from). It only runs in the
+CLI, not the desktop app.
+
+**Start from scratch.** `systemctl --user stop claude-monitor-companion`, delete
+`~/.config/claude-monitor-companion/`, and start it again.
+
+**Uninstall.** `systemctl --user disable --now claude-monitor-companion`, then delete the files
+listed in step 2 and `~/.config/claude-monitor-companion/`, and remove the hooks from
+`~/.claude/settings.json`.
+
 ## The settings page
 
 Open the board's IP in a browser. Everything is on one page, grouped:

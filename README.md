@@ -182,11 +182,21 @@ Hooks are exec form and identical on macOS, Linux and Windows. The status line n
 per-platform script, and the generator emits the right one — Python on Unix, PowerShell on
 Windows, where it needs nothing that Windows does not already ship.
 
+### No board? Run it on Linux
+
+The same firmware also builds as a Linux desktop app: the mascot in a window, driven by the
+same hooks, with the mouse standing in for your finger. It runs as a user service, highlights
+its taskbar entry and posts a notification when Claude needs you, and can run alongside a
+board — the hook generator takes a list of targets, so a board, the desktop or both is a
+configuration choice. Setup: [Code/README.md → Linux desktop
+companion](Code/README.md#linux-desktop-companion).
+
 ## Repository layout
 
 | | |
 |---|---|
 | [`Code/`](Code) | Firmware. PlatformIO + Arduino, ESP32-S3. Start at [Code/README.md](Code/README.md) |
+| [`Code/desktop/`](Code/desktop) | The same firmware as a Linux desktop app (CMake + SDL3) |
 | [`CAD/`](CAD) | Printable parts, 3MF and STEP |
 | [`Hardware/`](Hardware) | Wiring schematic |
 | [`images/`](images) | Build and result photos |
