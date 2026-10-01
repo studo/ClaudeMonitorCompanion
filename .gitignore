@@ -10,3 +10,6 @@ Code/include/secrets.h
 # Local tooling and personal preferences, not part of the project
 .claude/
 CLAUDE.local.md
+
+# Desktop build output
+Code/desktop/build/
