@@ -64,7 +64,7 @@ void print_usage() {
       "  --notify LIST    desktop notifications for these, comma-separated:\n"
       "                   needs_input, limit, error, done, or none\n"
       "                   (default needs_input,limit)\n"
-      "  --no-attention   do not mark the taskbar entry when Claude needs you\n"
+      "  --no-attention   do not highlight the taskbar entry when Claude needs you\n"
       "  --screenshot F   where SIGUSR1 saves a PNG of the panel\n"
       "                   (default <data-dir>/screenshot.png)\n"
       "  --version        print the version and exit\n"
@@ -257,7 +257,7 @@ struct Window {
   uint32_t shown_generation = 0xffffffffu;
   bool dirty = true;
   bool mouse_down = false;
-  bool flashing = false;
+  bool alerting = false;
   float wheel = 0.0f;
   uint64_t wheel_at = 0;
 };
@@ -413,11 +413,8 @@ void handle_event(Window &w, SDL_Event &e, bool &running) {
       break;
 
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
-      // Looking at the window is answer enough; stop the taskbar pulsing.
-      if (w.flashing) {
-        SDL_FlashWindow(w.win, SDL_FLASH_CANCEL);
-        w.flashing = false;
-      }
+      // Looking at the window is answer enough for the taskbar.
+      desktop::set_urgent(false);
       break;
 
     // A left button press is a finger landing; dragging is the finger moving.
@@ -542,6 +539,7 @@ int main(int argc, char **argv) {
   Serial.printf("desktop: Claude Monitor Companion %s, events at http://%s/e/<event>\n",
                 CMC_VERSION, desktop::display_address().c_str());
   Serial.printf("desktop: settings and data in %s\n", o.data_dir.c_str());
+  Serial.printf("desktop: video driver %s\n", SDL_GetCurrentVideoDriver());
 
   std::thread(firmware_thread, settings_schema()).detach();
   std::thread(stdin_thread).detach();
@@ -564,17 +562,15 @@ int main(int argc, char **argv) {
     if (a != desktop::Attention::None &&
         !(SDL_GetWindowFlags(w.win) & SDL_WINDOW_INPUT_FOCUS)) {
       const bool asks = a == desktop::Attention::NeedsInput || a == desktop::Attention::Limit;
-      if (asks && o.attention && SDL_FlashWindow(w.win, SDL_FLASH_UNTIL_FOCUSED)) {
-        w.flashing = true;
-      }
+      if (asks && o.attention) desktop::set_urgent(true);
       desktop::notify(a);
     }
-    // Answered somewhere else — in the terminal, usually. The taskbar should
-    // stop asking as soon as the face does.
-    if (w.flashing && !mood::alerting()) {
-      SDL_FlashWindow(w.win, SDL_FLASH_CANCEL);
-      w.flashing = false;
-    }
+    // Answered — usually in the terminal, not here. The taskbar and the
+    // notification should stop asking as soon as the face does.
+    const bool alerting = mood::alerting();
+    if (w.alerting && !alerting) desktop::attention_cleared();
+    w.alerting = alerting;
+    desktop::attention_pump();
 
     if (w.dirty || desktop::frame_generation() != w.shown_generation) present(w);
   }

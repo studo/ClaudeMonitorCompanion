@@ -5,7 +5,7 @@
 # drivers (src/). The ESP32 build does not see any of this: PlatformIO only
 # looks in ../src and ../include.
 #
-#   sudo apt install build-essential cmake pkg-config libsdl3-dev
+#   sudo apt install build-essential cmake pkg-config libsdl3-dev libsystemd-dev
 #   cmake -S Code/desktop -B Code/desktop/build -DCMAKE_INSTALL_PREFIX=$HOME/.local
 #   cmake --build Code/desktop/build -j
 #   cmake --install Code/desktop/build
@@ -24,6 +24,10 @@ endif()
 
 find_package(SDL3 3.2 REQUIRED CONFIG COMPONENTS SDL3)
 find_package(Threads REQUIRED)
+# sd-bus, for the taskbar highlight and notifications. Always present where
+# systemd is, which is what the user service needs anyway.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
 include(GNUInstallDirs)
 
 set(FIRMWARE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -62,7 +66,7 @@ target_include_directories(cmc_core BEFORE PUBLIC
   ${FIRMWARE_DIR}/include
 )
 target_compile_definitions(cmc_core PUBLIC CMC_VERSION="${PROJECT_VERSION}")
-target_link_libraries(cmc_core PUBLIC SDL3::SDL3 Threads::Threads)
+target_link_libraries(cmc_core PUBLIC SDL3::SDL3 PkgConfig::SYSTEMD Threads::Threads)
 
 # Warnings for the desktop code. The firmware sources are built the way the
 # board builds them, and their warnings are the board's business.

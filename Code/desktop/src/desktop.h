@@ -27,7 +27,7 @@ struct Options {
   std::string data_dir;
   std::string screenshot;  // where SIGUSR1 writes a PNG of the panel
   bool mute = false;
-  bool attention = true;   // flash the taskbar entry on alerts
+  bool attention = true;   // mark the taskbar entry on alerts
   unsigned notify = kNotifyNeedsInput | kNotifyLimit;
 };
 
@@ -78,7 +78,18 @@ enum class Attention : uint8_t { None, NeedsInput, Limit, Error, Done };
 void request_attention(Attention a);
 Attention take_attention();
 
-// Main thread only: flash the taskbar entry and/or post a notification.
+// The rest is main thread only.
+
+// Mark the taskbar entry as wanting attention, or stop.
+void set_urgent(bool on);
+
+// Post a desktop notification for `a`, if the user asked for that kind.
 void notify(Attention a);
+
+// The alert was dealt with: clear the taskbar mark and close its notification.
+void attention_cleared();
+
+// Service the session bus connection. Call once per pass of the event loop.
+void attention_pump();
 
 }  // namespace desktop
