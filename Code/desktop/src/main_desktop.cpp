@@ -61,6 +61,7 @@ void print_usage() {
       "                   0.25 to 8 (default 2; 0.25 is the smallest the window goes)\n"
       "  --data-dir DIR   where settings and faces live\n"
       "                   (default $XDG_CONFIG_HOME/claude-monitor-companion)\n"
+      "  --no-shell       show only the screen, without the mascot's body around it\n"
       "  --mute           no sound at all\n"
       "  --notify LIST    desktop notifications for these, comma-separated:\n"
       "                   needs_input, limit, error, done, or none\n"
@@ -136,6 +137,8 @@ int parse_args(int argc, char **argv) {
       const char *v = value("a file name");
       if (!v) return 2;
       o.screenshot = v;
+    } else if (a == "--no-shell") {
+      o.shell = false;
     } else if (a == "--mute") {
       o.mute = true;
     } else if (a == "--no-attention") {
@@ -207,13 +210,18 @@ int open_listen_socket() {
 
 // ------------------------------------------------------ desktop defaults --
 
-// The desktop starts with one setting different from the board: failures are
+// The desktop starts with a few settings different from the board. Failures are
 // silent. On a desk the board's buzz for every failed tool call is a gentle
 // cue; from laptop speakers in a quiet room it is a lot. Everything else keeps
-// the board's defaults, and this one is still changed on the settings page.
+// the board's defaults, and these are still changed on the settings page.
+//
+// With the mascot's body drawn round the panel, the eyes also start further
+// apart, closer to where the Claude Code mascot has them. 120 is the widest
+// gap at which the spectacles and glasses styles still fit on the panel.
 void apply_desktop_defaults() {
   config::set("error_sound", 0);
-  Serial.println("desktop: applied desktop defaults (errors are silent)");
+  if (options().shell) config::set("eye_gap", 120);
+  Serial.println("desktop: applied desktop defaults (errors are silent, eyes wider apart)");
 }
 
 // The firmware fingerprints its settings table and restores defaults when it
@@ -249,6 +257,59 @@ void stdin_thread() {
 
 // ------------------------------------------------------------------ window --
 
+// ------------------------------------------------------------------- shell --
+
+// The Claude Code mascot, as the CLI draws it at start-up:
+//
+//    ▐▛███▜▌
+//   ▝▜█████▛▘
+//     ▘▘ ▝▝
+//
+// Read as quarter-block pixels, each one twice as tall as it is wide, that is
+// a body 12 units wide and 8 tall, a 2x2 arm on each side halfway down, and
+// four 1x2 legs in two pairs. At 40 px per unit the body is 480x320, the
+// firmware's 240x280 panel sits inside it, and the panel's eyes land where
+// the mascot's eyes are. Everything is in panel pixels and scaled together.
+struct Shell {
+  int w, h;              // canvas size
+  int panel_x, panel_y;  // where the 240x280 panel goes
+};
+
+const int kUnit = 40;
+
+Shell shell_layout() {
+  if (!options().shell) return {LCD_W, LCD_H, 0, 0};
+  // Canvas: 16 units wide (arms included), 10 tall (legs included).
+  return {16 * kUnit, 10 * kUnit, 2 * kUnit + (12 * kUnit - LCD_W) / 2, (8 * kUnit - LCD_H) / 2};
+}
+
+// Drawn in the face's own orange and dimmed with the backlight, so screen and
+// body read as one character. The screen only stands out when it changes
+// colour — red, when the mascot wants you.
+void draw_shell(SDL_Renderer *r, uint8_t light) {
+  if (!options().shell) return;
+  struct Block { int x, y, w, h; };  // in units
+  const Block blocks[] = {
+      {2, 0, 12, 8},                           // body
+      {0, 4, 2, 2}, {14, 4, 2, 2},             // arms
+      {3, 8, 1, 2}, {5, 8, 1, 2},              // legs
+      {10, 8, 1, 2}, {12, 8, 1, 2},
+  };
+  const int oi = config::v::orange();
+  const uint16_t swapped = kOrangeCandidates[(oi >= 0 && oi < 4) ? oi : ORANGE_DEFAULT];
+  const uint16_t c = (uint16_t)((swapped >> 8) | (swapped << 8));
+  const uint8_t r8 = (uint8_t)(((c >> 11) & 0x1F) * 255 / 31);
+  const uint8_t g8 = (uint8_t)(((c >> 5) & 0x3F) * 255 / 63);
+  const uint8_t b8 = (uint8_t)((c & 0x1F) * 255 / 31);
+  SDL_SetRenderDrawColor(r, (uint8_t)(r8 * light / 255), (uint8_t)(g8 * light / 255),
+                         (uint8_t)(b8 * light / 255), 0xFF);
+  for (const Block &b : blocks) {
+    const SDL_FRect f = {(float)(b.x * kUnit), (float)(b.y * kUnit), (float)(b.w * kUnit),
+                         (float)(b.h * kUnit)};
+    SDL_RenderFillRect(r, &f);
+  }
+}
+
 struct Window {
   SDL_Window *win = nullptr;
   SDL_Renderer *ren = nullptr;
@@ -261,6 +322,8 @@ struct Window {
   bool alerting = false;
   float wheel = 0.0f;
   uint64_t wheel_at = 0;
+  Shell shell = {LCD_W, LCD_H, 0, 0};
+  bool capture_window = false;  // save the next frame as drawn, body included
 };
 
 // The icon is the face itself: the default eyes on the default orange, at the
@@ -294,18 +357,22 @@ bool open_window(Window &w) {
     fprintf(stderr, "cannot open a window: %s\n", SDL_GetError());
     return false;
   }
+  w.shell = shell_layout();
   const float scale = options().scale;
-  w.win = SDL_CreateWindow("Claude Monitor Companion", (int)lroundf(LCD_W * scale),
-                           (int)lroundf(LCD_H * scale),
-                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+  // Transparent, so with the body drawn the window is the mascot's outline
+  // rather than a rectangle with a mascot in it.
+  SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+  if (options().shell) flags |= SDL_WINDOW_TRANSPARENT;
+  w.win = SDL_CreateWindow("Claude Monitor Companion", (int)lroundf(w.shell.w * scale),
+                           (int)lroundf(w.shell.h * scale), flags);
   if (!w.win) {
     fprintf(stderr, "cannot create window: %s\n", SDL_GetError());
     return false;
   }
   // Down to a quarter of the panel, for parking it in a corner. Below 1:1 it
   // is scaled smoothly (see present()), so the face stays recognisable.
-  SDL_SetWindowMinimumSize(w.win, LCD_W / 4, LCD_H / 4);
-  const float aspect = (float)LCD_W / (float)LCD_H;
+  SDL_SetWindowMinimumSize(w.win, w.shell.w / 4, w.shell.h / 4);
+  const float aspect = (float)w.shell.w / (float)w.shell.h;
   SDL_SetWindowAspectRatio(w.win, aspect, aspect);
   if (SDL_Surface *icon = make_icon()) {
     SDL_SetWindowIcon(w.win, icon);
@@ -320,7 +387,8 @@ bool open_window(Window &w) {
   // Letterboxed rather than integer-only: with fractional desktop scaling an
   // integer-only fit can leave a third of the window empty. Nearest-neighbour
   // keeps every panel pixel a hard-edged block either way.
-  SDL_SetRenderLogicalPresentation(w.ren, LCD_W, LCD_H, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+  SDL_SetRenderLogicalPresentation(w.ren, w.shell.w, w.shell.h,
+                                   SDL_LOGICAL_PRESENTATION_LETTERBOX);
   w.tex = SDL_CreateTexture(w.ren, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING,
                             LCD_W, LCD_H);
   if (!w.tex) {
@@ -340,6 +408,20 @@ uint8_t backlight_mod(uint8_t duty) {
   return (uint8_t)lroundf(255.0f * powf(duty / 255.0f, 1.0f / 2.2f));
 }
 
+// The window as drawn, body and all, next to the panel screenshot.
+void save_window_capture(Window &w) {
+  std::string path = options().screenshot;
+  const size_t dot = path.rfind(".png");
+  path = (dot == std::string::npos ? path : path.substr(0, dot)) + "-window.png";
+  SDL_Surface *s = SDL_RenderReadPixels(w.ren, nullptr);
+  if (s && SDL_SavePNG(s, path.c_str())) {
+    Serial.printf("desktop: window saved to %s\n", path.c_str());
+  } else {
+    fprintf(stderr, "[E] window capture failed: %s\n", SDL_GetError());
+  }
+  SDL_DestroySurface(s);
+}
+
 void present(Window &w) {
   uint8_t duty = 0;
   w.shown_generation = desktop::frame_snapshot(w.panel.data(), duty);
@@ -357,12 +439,20 @@ void present(Window &w) {
   // in and out as they move, so smaller than 1:1 is filtered instead.
   int out_w = 0, out_h = 0;
   SDL_GetCurrentRenderOutputSize(w.ren, &out_w, &out_h);
-  SDL_SetTextureScaleMode(w.tex, (out_w < LCD_W || out_h < LCD_H) ? SDL_SCALEMODE_LINEAR
-                                                                 : SDL_SCALEMODE_NEAREST);
+  const bool shrunk = out_w < w.shell.w || out_h < w.shell.h;
+  SDL_SetTextureScaleMode(w.tex, shrunk ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
 
-  SDL_SetRenderDrawColor(w.ren, 0, 0, 0, 255);
+  // Clear to transparent around the body; to black when it is just the panel.
+  SDL_SetRenderDrawColor(w.ren, 0, 0, 0, options().shell ? 0 : 255);
   SDL_RenderClear(w.ren);
-  SDL_RenderTexture(w.ren, w.tex, nullptr, nullptr);
+  draw_shell(w.ren, m);
+  const SDL_FRect dst = {(float)w.shell.panel_x, (float)w.shell.panel_y, (float)LCD_W,
+                         (float)LCD_H};
+  SDL_RenderTexture(w.ren, w.tex, nullptr, &dst);
+  if (w.capture_window) {
+    w.capture_window = false;
+    save_window_capture(w);
+  }
   SDL_RenderPresent(w.ren);
   w.dirty = false;
 }
@@ -398,8 +488,9 @@ bool to_panel(Window &w, SDL_Event &e, int &x, int &y) {
     fx = e.button.x;
     fy = e.button.y;
   }
-  x = (int)floorf(fx);
-  y = (int)floorf(fy);
+  // The body is plastic, not touchscreen: only presses on the panel count.
+  x = (int)floorf(fx) - w.shell.panel_x;
+  y = (int)floorf(fy) - w.shell.panel_y;
   return x >= 0 && x < LCD_W && y >= 0 && y < LCD_H;
 }
 
@@ -568,6 +659,8 @@ int main(int argc, char **argv) {
     if (s_screenshot_requested) {
       s_screenshot_requested = 0;
       save_screenshot(w);
+      w.capture_window = true;
+      w.dirty = true;
     }
 
     const desktop::Attention a = desktop::take_attention();

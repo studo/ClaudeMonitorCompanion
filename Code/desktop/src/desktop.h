@@ -26,6 +26,7 @@ struct Options {
   float scale = 2.0f;  // window size as a multiple of the panel
   std::string data_dir;
   std::string screenshot;  // where SIGUSR1 writes a PNG of the panel
+  bool shell = true;   // draw the printed body around the panel
   bool mute = false;
   bool attention = true;   // mark the taskbar entry on alerts
   unsigned notify = kNotifyNeedsInput | kNotifyLimit;

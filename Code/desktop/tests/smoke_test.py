@@ -110,6 +110,7 @@ def main(binary):
         check(c.get("/")[0] == 200, "serves the settings page")
 
         check(c.setting("error_sound") == 0, "first run: failures are silent")
+        check(c.setting("eye_gap") == 120, "first run: eyes start wider apart, as on the mascot")
         check(c.setting("alert_sound") == 3, "first run: needs-input sound kept (bell and buzzer)")
         check(c.setting("done_sound") == 2, "first run: finished sound kept (buzzer)")
 
@@ -154,8 +155,9 @@ def main(binary):
         check(status == 403, "a rebound host name is refused")
 
         status, _ = c.request("/api/reset", "POST", b"", {"Origin": origin})
-        check(status == 200 and c.setting("error_sound") == 0 and c.setting("eye_w") == 40,
-              "factory reset keeps the desktop's silent failures")
+        check(status == 200 and c.setting("error_sound") == 0 and c.setting("eye_w") == 40
+              and c.setting("eye_gap") == 120,
+              "factory reset keeps the desktop's defaults")
         # The user's own choice, which a restart must not overwrite.
         c.request("/api/config", "POST", b"eye_w=45&error_sound=2",
                   {"Origin": origin, "Content-Type": "application/x-www-form-urlencoded"})

@@ -113,7 +113,9 @@ but raw facts.
 
 No board, or a second screen for the same events? [`desktop/`](desktop) builds this firmware
 for Linux and runs it in a window: the same mood engine, faces, screens and settings page,
-compiled from the same sources, with the panel shown pixel for pixel. It listens for the same
+compiled from the same sources, with the panel shown pixel for pixel. Where the board has its
+printed shell, the window draws the Claude Code mascot's body around the screen — the wide
+pixel crab from the CLI's start-up banner — with the panel's eyes as its eyes. It listens for the same
 HTTP requests as the board, so the same hooks drive it, and it can run alongside a board.
 
 Built and tested on Kubuntu 26.04 (Plasma 6, Wayland). It should work on any Linux desktop
@@ -139,7 +141,8 @@ is dealt with, wherever you answered it. The window never raises itself or takes
 **Sound** comes from your speakers, synthesised from the same settings as the board's buzzer
 and bell. One default differs from the board: failures are silent, because the buzz for every
 failed tool call is a lot to hear from laptop speakers. Change it under *Sound on errors* on the
-settings page.
+settings page. The eyes also start further apart than on the board (*Gap between eyes* 120), to
+sit where the mascot's do; 120 is the widest at which the glasses styles still fit.
 
 ### 1. Install the build dependencies
 
@@ -195,6 +198,7 @@ systemctl --user stop claude-monitor-companion
 |---|---|
 | `--port N` | listen on another port (default 8765) |
 | `--scale N` | starting window size as a multiple of the 240×280 panel, from 0.25 to 8 (default 2). `0.25` opens it at its smallest. The window can then be resized freely, down to a quarter of the panel |
+| `--no-shell` | show only the 240×280 screen, without the mascot's body around it |
 | `--mute` | no sound at all |
 | `--notify LIST` | which events notify: `needs_input`, `limit`, `error`, `done`, or `none` (default `needs_input,limit`) |
 | `--no-attention` | do not highlight the taskbar entry |
