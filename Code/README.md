@@ -194,7 +194,7 @@ systemctl --user stop claude-monitor-companion
 | Option | |
 |---|---|
 | `--port N` | listen on another port (default 8765) |
-| `--scale N` | starting window size as a multiple of the 240×280 panel (default 2). The window can then be resized freely, down to a quarter of the panel |
+| `--scale N` | starting window size as a multiple of the 240×280 panel, from 0.25 to 8 (default 2). `0.25` opens it at its smallest. The window can then be resized freely, down to a quarter of the panel |
 | `--mute` | no sound at all |
 | `--notify LIST` | which events notify: `needs_input`, `limit`, `error`, `done`, or `none` (default `needs_input,limit`) |
 | `--no-attention` | do not highlight the taskbar entry |

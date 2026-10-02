@@ -23,7 +23,7 @@ enum Notify : unsigned {
 struct Options {
   std::string listen = "127.0.0.1";
   int port = 8765;
-  int scale = 2;
+  float scale = 2.0f;  // window size as a multiple of the panel
   std::string data_dir;
   std::string screenshot;  // where SIGUSR1 writes a PNG of the panel
   bool mute = false;

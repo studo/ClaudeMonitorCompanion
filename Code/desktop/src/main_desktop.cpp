@@ -57,7 +57,8 @@ void print_usage() {
       "\n"
       "  --port N         listen on port N (default 8765)\n"
       "  --listen ADDR    address to listen on (default 127.0.0.1)\n"
-      "  --scale N        window size as a multiple of the 240x280 panel (default 2)\n"
+      "  --scale N        starting window size as a multiple of the 240x280 panel,\n"
+      "                   0.25 to 8 (default 2; 0.25 is the smallest the window goes)\n"
       "  --data-dir DIR   where settings and faces live\n"
       "                   (default $XDG_CONFIG_HOME/claude-monitor-companion)\n"
       "  --mute           no sound at all\n"
@@ -122,9 +123,9 @@ int parse_args(int argc, char **argv) {
     } else if (a == "--scale") {
       const char *v = value("a number");
       if (!v) return 2;
-      o.scale = atoi(v);
-      if (o.scale < 1 || o.scale > 8) {
-        fprintf(stderr, "scale must be 1 to 8\n");
+      o.scale = strtof(v, nullptr);
+      if (!(o.scale >= 0.25f && o.scale <= 8.0f)) {
+        fprintf(stderr, "scale must be 0.25 to 8\n");
         return 2;
       }
     } else if (a == "--data-dir") {
@@ -293,8 +294,9 @@ bool open_window(Window &w) {
     fprintf(stderr, "cannot open a window: %s\n", SDL_GetError());
     return false;
   }
-  const int scale = options().scale;
-  w.win = SDL_CreateWindow("Claude Monitor Companion", LCD_W * scale, LCD_H * scale,
+  const float scale = options().scale;
+  w.win = SDL_CreateWindow("Claude Monitor Companion", (int)lroundf(LCD_W * scale),
+                           (int)lroundf(LCD_H * scale),
                            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
   if (!w.win) {
     fprintf(stderr, "cannot create window: %s\n", SDL_GetError());
