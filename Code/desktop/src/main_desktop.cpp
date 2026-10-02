@@ -300,7 +300,9 @@ bool open_window(Window &w) {
     fprintf(stderr, "cannot create window: %s\n", SDL_GetError());
     return false;
   }
-  SDL_SetWindowMinimumSize(w.win, LCD_W, LCD_H);
+  // Down to a quarter of the panel, for parking it in a corner. Below 1:1 it
+  // is scaled smoothly (see present()), so the face stays recognisable.
+  SDL_SetWindowMinimumSize(w.win, LCD_W / 4, LCD_H / 4);
   const float aspect = (float)LCD_W / (float)LCD_H;
   SDL_SetWindowAspectRatio(w.win, aspect, aspect);
   if (SDL_Surface *icon = make_icon()) {
@@ -347,6 +349,14 @@ void present(Window &w) {
   SDL_UpdateTexture(w.tex, nullptr, w.rgb.data(), LCD_W * (int)sizeof(uint16_t));
   const uint8_t m = backlight_mod(duty);
   SDL_SetTextureColorMod(w.tex, m, m, m);
+
+  // Nearest-neighbour keeps panel pixels as hard blocks when enlarging. When
+  // shrinking it would drop whole rows and columns, and the eyes would flicker
+  // in and out as they move, so smaller than 1:1 is filtered instead.
+  int out_w = 0, out_h = 0;
+  SDL_GetCurrentRenderOutputSize(w.ren, &out_w, &out_h);
+  SDL_SetTextureScaleMode(w.tex, (out_w < LCD_W || out_h < LCD_H) ? SDL_SCALEMODE_LINEAR
+                                                                 : SDL_SCALEMODE_NEAREST);
 
   SDL_SetRenderDrawColor(w.ren, 0, 0, 0, 255);
   SDL_RenderClear(w.ren);
