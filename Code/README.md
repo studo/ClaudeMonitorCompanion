@@ -148,7 +148,9 @@ face matches the Claude Code mascot: narrower, wider-spaced, higher eyes (*Eye w
 between eyes* 120, *Eye height* 90, *Eye height on screen* 100) on a face screen stretched across
 the body, the mascot's own `#D77757` in place of the board's orange, and full brightness when
 awake (*Brightness normal* 255) so that colour shows as it is. The gauge and stats screens are
-not stretched. All of these are applied on first run and after a factory reset, and can be
+not stretched, and neither are faces drawn on the settings page: they appear in the middle of the
+body exactly as drawn in the editor's 24×28 grid. With the body drawn, *Background shade* has no
+visible effect, since the mascot's colour replaces all four oranges. All of these are applied on first run and after a factory reset, and can be
 changed on the settings page as usual; a board keeps its own defaults.
 
 ### 1. Install the build dependencies

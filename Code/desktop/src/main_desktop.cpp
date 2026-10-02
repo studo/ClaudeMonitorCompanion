@@ -299,9 +299,12 @@ Shell shell_layout() {
 // across the body so that, with the desktop's eye defaults (see
 // apply_desktop_defaults), the eyes land where the mascot's are. The other
 // screens are text and rings, which stretching would distort, so they stay at
-// the panel's own proportions in the middle.
+// the panel's own proportions in the middle. So do faces drawn on the settings
+// page: the editor is the panel's own 24x28 grid, and a drawing should look
+// the way it was drawn.
 SDL_FRect panel_rect(const Shell &s) {
-  if (options().shell && views::current() == views::View::Face) {
+  if (options().shell && views::current() == views::View::Face &&
+      face::custom_slot(face::style()) < 0) {
     return {(float)(kBodyX * kUnit), (float)s.panel_y, (float)(kBodyW * kUnit), (float)LCD_H};
   }
   return {(float)s.panel_x, (float)s.panel_y, (float)LCD_W, (float)LCD_H};
