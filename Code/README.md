@@ -114,8 +114,8 @@ but raw facts.
 No board, or a second screen for the same events? [`desktop/`](desktop) builds this firmware
 for Linux and runs it in a window: the same mood engine, faces, screens and settings page,
 compiled from the same sources, with the panel shown pixel for pixel. Where the board has its
-printed shell, the window draws the Claude Code mascot's body around the screen — the wide
-pixel crab from the CLI's start-up banner — with the panel's eyes as its eyes. It listens for the same
+printed shell, the window draws the Claude Code mascot — the wide pixel crab from the CLI's
+start-up banner — in its own colour, with the panel's eyes as its eyes. It listens for the same
 HTTP requests as the board, so the same hooks drive it, and it can run alongside a board.
 
 Built and tested on Kubuntu 26.04 (Plasma 6, Wayland). It should work on any Linux desktop
@@ -141,8 +141,15 @@ is dealt with, wherever you answered it. The window never raises itself or takes
 **Sound** comes from your speakers, synthesised from the same settings as the board's buzzer
 and bell. One default differs from the board: failures are silent, because the buzz for every
 failed tool call is a lot to hear from laptop speakers. Change it under *Sound on errors* on the
-settings page. The eyes also start further apart than on the board (*Gap between eyes* 120), to
-sit where the mascot's do; 120 is the widest at which the glasses styles still fit.
+settings page.
+
+With the mascot's body drawn, a few face settings also start differently from the board, so the
+face matches the Claude Code mascot: narrower, wider-spaced, higher eyes (*Eye width* 20, *Gap
+between eyes* 120, *Eye height* 90, *Eye height on screen* 100) on a face screen stretched across
+the body, the mascot's own `#D77757` in place of the board's orange, and full brightness when
+awake (*Brightness normal* 255) so that colour shows as it is. The gauge and stats screens are
+not stretched. All of these are applied on first run and after a factory reset, and can be
+changed on the settings page as usual; a board keeps its own defaults.
 
 ### 1. Install the build dependencies
 

@@ -215,12 +215,27 @@ int open_listen_socket() {
 // cue; from laptop speakers in a quiet room it is a lot. Everything else keeps
 // the board's defaults, and these are still changed on the settings page.
 //
-// With the mascot's body drawn round the panel, the eyes also start further
-// apart, closer to where the Claude Code mascot has them. 120 is the widest
-// gap at which the spectacles and glasses styles still fit on the panel.
+// With the mascot's body drawn round the panel, the eyes also start where the
+// Claude Code mascot has them. The face screen is drawn twice as wide, so a
+// 20 px eye shows as one 40 px mascot unit; the gap and height put the pair at
+// the banner's columns and in the upper half of the body. All four are in
+// range for every face style.
+//
+// The height is 90, not the mascot's 80: the >< face is six grid rows of
+// round(h / 6) each, and at 80 that rounds up to 90 px, taller than the eye's
+// box, so changing back left its bottom row on screen. 90 fits exactly.
 void apply_desktop_defaults() {
   config::set("error_sound", 0);
-  if (options().shell) config::set("eye_gap", 120);
+  if (options().shell) {
+    config::set("eye_w", 20);
+    config::set("eye_gap", 120);
+    config::set("eye_h", 90);
+    config::set("eye_center_y", 100);
+    // Full brightness when awake, so the mascot shows in its own #D77757
+    // rather than the board's dimmer everyday backlight. Bored and asleep
+    // still dim, as on the board.
+    config::set("bl_normal", 255);
+  }
   Serial.println("desktop: applied desktop defaults (errors are silent, eyes wider apart)");
 }
 
@@ -259,50 +274,75 @@ void stdin_thread() {
 
 // ------------------------------------------------------------------- shell --
 
-// The Claude Code mascot, as the CLI draws it at start-up:
-//
-//    ▐▛███▜▌
-//   ▝▜█████▛▘
-//     ▘▘ ▝▝
-//
-// Read as quarter-block pixels, each one twice as tall as it is wide, that is
-// a body 12 units wide and 8 tall, a 2x2 arm on each side halfway down, and
-// four 1x2 legs in two pairs. At 40 px per unit the body is 480x320, the
-// firmware's 240x280 panel sits inside it, and the panel's eyes land where
-// the mascot's eyes are. Everything is in panel pixels and scaled together.
+// The Claude Code mascot: a body 13 units wide and 8 tall, a 2x2 arm on each
+// side halfway down, and four 1x2 legs in two pairs, the outer two flush with
+// the body's sides. At 40 px per unit the body is 520x320; the face screen is
+// stretched across it, and with the desktop's eye defaults the panel's eyes
+// land where the mascot's are. Everything is in panel pixels, scaled together.
 struct Shell {
   int w, h;              // canvas size
-  int panel_x, panel_y;  // where the 240x280 panel goes
+  int panel_x, panel_y;  // where the 240x280 panel goes when not stretched
 };
 
 const int kUnit = 40;
+const int kBodyX = 2, kBodyW = 13, kBodyH = 8;  // in units
+const int kCanvasW = kBodyX * 2 + kBodyW;       // arms on both sides
+const int kCanvasH = kBodyH + 2;                // legs underneath
 
 Shell shell_layout() {
   if (!options().shell) return {LCD_W, LCD_H, 0, 0};
-  // Canvas: 16 units wide (arms included), 10 tall (legs included).
-  return {16 * kUnit, 10 * kUnit, 2 * kUnit + (12 * kUnit - LCD_W) / 2, (8 * kUnit - LCD_H) / 2};
+  return {kCanvasW * kUnit, kCanvasH * kUnit, kBodyX * kUnit + (kBodyW * kUnit - LCD_W) / 2,
+          (kBodyH * kUnit - LCD_H) / 2};
 }
 
-// Drawn in the face's own orange and dimmed with the backlight, so screen and
-// body read as one character. The screen only stands out when it changes
-// colour — red, when the mascot wants you.
+// Where the panel is drawn on the canvas. On the face screen it is stretched
+// across the body so that, with the desktop's eye defaults (see
+// apply_desktop_defaults), the eyes land where the mascot's are. The other
+// screens are text and rings, which stretching would distort, so they stay at
+// the panel's own proportions in the middle.
+SDL_FRect panel_rect(const Shell &s) {
+  if (options().shell && views::current() == views::View::Face) {
+    return {(float)(kBodyX * kUnit), (float)s.panel_y, (float)(kBodyW * kUnit), (float)LCD_H};
+  }
+  return {(float)s.panel_x, (float)s.panel_y, (float)LCD_W, (float)LCD_H};
+}
+
+// The Claude Code mascot's colour. The firmware's field is one of four fixed
+// oranges; with the body drawn, whichever is selected is shown as this instead,
+// on the body and the screen alike, so the two are one surface. Other colours
+// — the red alert field, black, white — are shown as the firmware drew them.
+const uint32_t kMascotRGB = 0xD77757;
+
+uint32_t rgb888(uint16_t swapped) {
+  if (options().shell) {
+    const int oi = config::v::orange();
+    if (swapped == kOrangeCandidates[(oi >= 0 && oi < 4) ? oi : ORANGE_DEFAULT]) {
+      return kMascotRGB;
+    }
+  }
+  const uint16_t c = (uint16_t)((swapped >> 8) | (swapped << 8));
+  const uint32_t r = ((c >> 11) & 0x1F) * 255 / 31;
+  const uint32_t g = ((c >> 5) & 0x3F) * 255 / 63;
+  const uint32_t b = (c & 0x1F) * 255 / 31;
+  return (r << 16) | (g << 8) | b;
+}
+
+// Drawn in the field colour — the mascot's orange, or red while it wants you —
+// and dimmed with the backlight, so screen and body are always one character.
 void draw_shell(SDL_Renderer *r, uint8_t light) {
   if (!options().shell) return;
   struct Block { int x, y, w, h; };  // in units
+  const int right = kBodyX + kBodyW;
   const Block blocks[] = {
-      {2, 0, 12, 8},                           // body
-      {0, 4, 2, 2}, {14, 4, 2, 2},             // arms
-      {3, 8, 1, 2}, {5, 8, 1, 2},              // legs
-      {10, 8, 1, 2}, {12, 8, 1, 2},
+      {kBodyX, 0, kBodyW, kBodyH},                        // body
+      {0, 4, kBodyX, 2}, {right, 4, kBodyX, 2},           // arms
+      {kBodyX, kBodyH, 1, 2}, {kBodyX + 2, kBodyH, 1, 2},  // legs
+      {right - 3, kBodyH, 1, 2}, {right - 1, kBodyH, 1, 2},
   };
-  const int oi = config::v::orange();
-  const uint16_t swapped = kOrangeCandidates[(oi >= 0 && oi < 4) ? oi : ORANGE_DEFAULT];
-  const uint16_t c = (uint16_t)((swapped >> 8) | (swapped << 8));
-  const uint8_t r8 = (uint8_t)(((c >> 11) & 0x1F) * 255 / 31);
-  const uint8_t g8 = (uint8_t)(((c >> 5) & 0x3F) * 255 / 63);
-  const uint8_t b8 = (uint8_t)((c & 0x1F) * 255 / 31);
-  SDL_SetRenderDrawColor(r, (uint8_t)(r8 * light / 255), (uint8_t)(g8 * light / 255),
-                         (uint8_t)(b8 * light / 255), 0xFF);
+  const uint32_t c = rgb888(face::background());
+  SDL_SetRenderDrawColor(r, (uint8_t)(((c >> 16) & 0xFF) * light / 255),
+                         (uint8_t)(((c >> 8) & 0xFF) * light / 255),
+                         (uint8_t)((c & 0xFF) * light / 255), 0xFF);
   for (const Block &b : blocks) {
     const SDL_FRect f = {(float)(b.x * kUnit), (float)(b.y * kUnit), (float)(b.w * kUnit),
                          (float)(b.h * kUnit)};
@@ -315,7 +355,7 @@ struct Window {
   SDL_Renderer *ren = nullptr;
   SDL_Texture *tex = nullptr;
   std::vector<uint16_t> panel = std::vector<uint16_t>(LCD_W * LCD_H);
-  std::vector<uint16_t> rgb = std::vector<uint16_t>(LCD_W * LCD_H);
+  std::vector<uint32_t> rgb = std::vector<uint32_t>(LCD_W * LCD_H);
   uint32_t shown_generation = 0xffffffffu;
   bool dirty = true;
   bool mouse_down = false;
@@ -323,6 +363,7 @@ struct Window {
   float wheel = 0.0f;
   uint64_t wheel_at = 0;
   Shell shell = {LCD_W, LCD_H, 0, 0};
+  SDL_FRect panel_dst = {0, 0, (float)LCD_W, (float)LCD_H};  // where the panel was last drawn
   bool capture_window = false;  // save the next frame as drawn, body included
 };
 
@@ -389,7 +430,7 @@ bool open_window(Window &w) {
   // keeps every panel pixel a hard-edged block either way.
   SDL_SetRenderLogicalPresentation(w.ren, w.shell.w, w.shell.h,
                                    SDL_LOGICAL_PRESENTATION_LETTERBOX);
-  w.tex = SDL_CreateTexture(w.ren, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING,
+  w.tex = SDL_CreateTexture(w.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING,
                             LCD_W, LCD_H);
   if (!w.tex) {
     fprintf(stderr, "cannot create texture: %s\n", SDL_GetError());
@@ -425,12 +466,19 @@ void save_window_capture(Window &w) {
 void present(Window &w) {
   uint8_t duty = 0;
   w.shown_generation = desktop::frame_snapshot(w.panel.data(), duty);
-  // The firmware stores pixels byte-swapped for the panel's SPI bus.
+  // The firmware stores RGB565, byte-swapped for the panel's SPI bus. Shown at
+  // 24 bits so the mascot's colour is exact; RGB565 cannot hold #D77757.
+  uint16_t last = 0;
+  uint32_t last_rgb = rgb888(0);
   for (size_t i = 0; i < w.panel.size(); i++) {
     const uint16_t v = w.panel[i];
-    w.rgb[i] = (uint16_t)((v >> 8) | (v << 8));
+    if (v != last) {
+      last = v;
+      last_rgb = rgb888(v);
+    }
+    w.rgb[i] = last_rgb;
   }
-  SDL_UpdateTexture(w.tex, nullptr, w.rgb.data(), LCD_W * (int)sizeof(uint16_t));
+  SDL_UpdateTexture(w.tex, nullptr, w.rgb.data(), LCD_W * (int)sizeof(uint32_t));
   const uint8_t m = backlight_mod(duty);
   SDL_SetTextureColorMod(w.tex, m, m, m);
 
@@ -446,9 +494,8 @@ void present(Window &w) {
   SDL_SetRenderDrawColor(w.ren, 0, 0, 0, options().shell ? 0 : 255);
   SDL_RenderClear(w.ren);
   draw_shell(w.ren, m);
-  const SDL_FRect dst = {(float)w.shell.panel_x, (float)w.shell.panel_y, (float)LCD_W,
-                         (float)LCD_H};
-  SDL_RenderTexture(w.ren, w.tex, nullptr, &dst);
+  w.panel_dst = panel_rect(w.shell);
+  SDL_RenderTexture(w.ren, w.tex, nullptr, &w.panel_dst);
   if (w.capture_window) {
     w.capture_window = false;
     save_window_capture(w);
@@ -489,8 +536,9 @@ bool to_panel(Window &w, SDL_Event &e, int &x, int &y) {
     fy = e.button.y;
   }
   // The body is plastic, not touchscreen: only presses on the panel count.
-  x = (int)floorf(fx) - w.shell.panel_x;
-  y = (int)floorf(fy) - w.shell.panel_y;
+  const SDL_FRect &d = w.panel_dst;
+  x = (int)floorf((fx - d.x) * LCD_W / d.w);
+  y = (int)floorf((fy - d.y) * LCD_H / d.h);
   return x >= 0 && x < LCD_W && y >= 0 && y < LCD_H;
 }
 
@@ -677,6 +725,11 @@ int main(int argc, char **argv) {
     w.alerting = alerting;
     desktop::attention_pump();
 
+    static views::View shown_view = views::View::Face;
+    if (views::current() != shown_view) {
+      shown_view = views::current();
+      w.dirty = true;
+    }
     if (w.dirty || desktop::frame_generation() != w.shown_generation) present(w);
   }
 

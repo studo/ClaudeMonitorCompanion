@@ -110,7 +110,9 @@ def main(binary):
         check(c.get("/")[0] == 200, "serves the settings page")
 
         check(c.setting("error_sound") == 0, "first run: failures are silent")
-        check(c.setting("eye_gap") == 120, "first run: eyes start wider apart, as on the mascot")
+        check((c.setting("eye_w"), c.setting("eye_gap"), c.setting("eye_h"), c.setting("eye_center_y"))
+              == (20, 120, 90, 100), "first run: eyes start where the mascot has them")
+        check(c.setting("bl_normal") == 255, "first run: full brightness, for the mascot's colour")
         check(c.setting("alert_sound") == 3, "first run: needs-input sound kept (bell and buzzer)")
         check(c.setting("done_sound") == 2, "first run: finished sound kept (buzzer)")
 
@@ -155,7 +157,7 @@ def main(binary):
         check(status == 403, "a rebound host name is refused")
 
         status, _ = c.request("/api/reset", "POST", b"", {"Origin": origin})
-        check(status == 200 and c.setting("error_sound") == 0 and c.setting("eye_w") == 40
+        check(status == 200 and c.setting("error_sound") == 0 and c.setting("eye_w") == 20
               and c.setting("eye_gap") == 120,
               "factory reset keeps the desktop's defaults")
         # The user's own choice, which a restart must not overwrite.
